@@ -729,16 +729,589 @@ DEPLOY_MODULES = [
 
 
 # ═══════════════════════════════════════════════
+#  HTML REPORT GENERATOR
+# ═══════════════════════════════════════════════
+
+def generate_html_report(profile, filepath):
+    """Generate an interactive HTML viewer for the captured profile."""
+    meta = profile.get("meta", {})
+    hostname = meta.get("hostname", "Unknown Mac")
+    captured = meta.get("captured_at", "")
+    macos_ver = meta.get("macos_version", "")
+    chip = meta.get("chip", "")
+
+    # Section icons and friendly names
+    section_map = {
+        "meta":        ("💻", "Machine Identity"),
+        "system":      ("⚙️", "System Preferences"),
+        "dock":        ("🚀", "Dock Layout"),
+        "apps":        ("📦", "Applications"),
+        "keyboard":    ("⌨️", "Keyboard & Input"),
+        "security":    ("🔒", "Security"),
+        "shell":       ("🐚", "Shell & Dotfiles"),
+        "login_items": ("🔑", "Login Items"),
+        "fonts":       ("🔤", "Fonts"),
+        "network":     ("🌐", "Network"),
+    }
+
+    # Build section cards
+    section_cards = ""
+    for key in ["meta", "system", "dock", "apps", "keyboard", "security", "shell", "login_items", "fonts", "network"]:
+        data = profile.get(key)
+        if not data:
+            continue
+        icon, title = section_map.get(key, ("📄", key.title()))
+        section_cards += _build_section_card(key, icon, title, data)
+
+    # Stats for header
+    n_apps = len(profile.get("apps", {}).get("all_installed", []))
+    n_brew = len(profile.get("apps", {}).get("homebrew", {}).get("formulae", []))
+    n_casks = len(profile.get("apps", {}).get("homebrew", {}).get("casks", []))
+    n_dock = len(profile.get("dock", {}).get("apps", []))
+    n_dots = len(profile.get("shell", {}).get("dotfiles", {}))
+    n_fonts = len(profile.get("fonts", {}).get("user_fonts", []))
+    dark = profile.get("system", {}).get("appearance", {}).get("dark_mode", False)
+
+    profile_json_escaped = json.dumps(profile, indent=2, default=str).replace("</", "<\\/").replace("'", "\\'")
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🧬 MacDNA — {hostname}</title>
+<style>
+  :root {{
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --dim: #8b949e;
+    --cyan: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+    --mono: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  }}
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 0;
+  }}
+
+  /* Header */
+  .header {{
+    background: linear-gradient(135deg, #161b22 0%, #1a2332 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 2rem 2rem 1.5rem;
+    text-align: center;
+  }}
+  .header h1 {{
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+  }}
+  .header h1 span {{ color: var(--cyan); }}
+  .header .subtitle {{
+    color: var(--dim);
+    font-size: 0.95rem;
+  }}
+  .header .meta-row {{
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+  }}
+  .header .meta-item {{
+    font-size: 0.85rem;
+    color: var(--dim);
+  }}
+  .header .meta-item strong {{
+    color: var(--text);
+  }}
+
+  /* Stats bar */
+  .stats {{
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    padding: 1rem 2rem;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }}
+  .stat {{
+    text-align: center;
+    min-width: 80px;
+  }}
+  .stat .num {{
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--cyan);
+  }}
+  .stat .label {{
+    font-size: 0.75rem;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }}
+
+  /* Search */
+  .search-bar {{
+    padding: 1rem 2rem;
+    background: var(--bg);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-bottom: 1px solid var(--border);
+  }}
+  .search-bar input {{
+    width: 100%;
+    max-width: 500px;
+    display: block;
+    margin: 0 auto;
+    padding: 0.6rem 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    font-size: 0.95rem;
+    font-family: var(--font);
+    outline: none;
+  }}
+  .search-bar input:focus {{
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 2px rgba(88,166,255,0.2);
+  }}
+
+  /* Main content */
+  .container {{
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 1.5rem;
+  }}
+
+  /* Section cards */
+  .section {{
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }}
+  .section:hover {{
+    border-color: var(--cyan);
+  }}
+  .section-header {{
+    display: flex;
+    align-items: center;
+    padding: 0.9rem 1.2rem;
+    cursor: pointer;
+    user-select: none;
+    gap: 0.75rem;
+    background: transparent;
+    transition: background 0.15s;
+  }}
+  .section-header:hover {{
+    background: rgba(88,166,255,0.05);
+  }}
+  .section-icon {{
+    font-size: 1.3rem;
+    width: 2rem;
+    text-align: center;
+    flex-shrink: 0;
+  }}
+  .section-title {{
+    font-weight: 600;
+    font-size: 1rem;
+    flex: 1;
+  }}
+  .section-badge {{
+    font-size: 0.75rem;
+    padding: 0.15rem 0.6rem;
+    border-radius: 10px;
+    background: rgba(88,166,255,0.15);
+    color: var(--cyan);
+    font-weight: 500;
+  }}
+  .section-arrow {{
+    color: var(--dim);
+    transition: transform 0.2s;
+    font-size: 0.8rem;
+  }}
+  .section.open .section-arrow {{
+    transform: rotate(90deg);
+  }}
+  .section-body {{
+    display: none;
+    padding: 0 1.2rem 1.2rem;
+    border-top: 1px solid var(--border);
+  }}
+  .section.open .section-body {{
+    display: block;
+    padding-top: 1rem;
+  }}
+
+  /* Data tables */
+  .data-table {{
+    width: 100%;
+    border-collapse: collapse;
+  }}
+  .data-table tr {{
+    border-bottom: 1px solid rgba(48,54,61,0.5);
+  }}
+  .data-table tr:last-child {{
+    border-bottom: none;
+  }}
+  .data-table td {{
+    padding: 0.45rem 0;
+    vertical-align: top;
+  }}
+  .data-table td:first-child {{
+    color: var(--dim);
+    font-size: 0.85rem;
+    width: 40%;
+    padding-right: 1rem;
+  }}
+  .data-table td:last-child {{
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    word-break: break-word;
+  }}
+
+  /* Value styling */
+  .val-true {{ color: var(--green); }}
+  .val-false {{ color: var(--red); }}
+  .val-empty {{ color: var(--dim); font-style: italic; }}
+  .val-string {{ color: var(--text); }}
+  .val-number {{ color: var(--purple); }}
+
+  /* Lists */
+  .item-list {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.3rem;
+  }}
+  .item-tag {{
+    font-size: 0.8rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 6px;
+    background: rgba(88,166,255,0.1);
+    color: var(--cyan);
+    font-family: var(--mono);
+    border: 1px solid rgba(88,166,255,0.15);
+  }}
+  .item-tag.app {{ background: rgba(63,185,80,0.1); color: var(--green); border-color: rgba(63,185,80,0.15); }}
+  .item-tag.cask {{ background: rgba(188,140,255,0.1); color: var(--purple); border-color: rgba(188,140,255,0.15); }}
+  .item-tag.dock {{ background: rgba(210,153,34,0.1); color: var(--yellow); border-color: rgba(210,153,34,0.15); }}
+
+  /* Sub-sections */
+  .subsection {{
+    margin-top: 1rem;
+  }}
+  .subsection-title {{
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--dim);
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+  }}
+
+  /* Code blocks for dotfiles */
+  .code-block {{
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.8rem;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 300px;
+    overflow-y: auto;
+    color: var(--text);
+    margin-top: 0.3rem;
+  }}
+
+  /* Footer */
+  .footer {{
+    text-align: center;
+    padding: 2rem;
+    color: var(--dim);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border);
+    margin-top: 2rem;
+  }}
+
+  /* Raw JSON toggle */
+  .raw-toggle {{
+    text-align: center;
+    margin: 1.5rem 0;
+  }}
+  .raw-toggle button {{
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--dim);
+    padding: 0.5rem 1.5rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-family: var(--font);
+    transition: all 0.2s;
+  }}
+  .raw-toggle button:hover {{
+    border-color: var(--cyan);
+    color: var(--cyan);
+  }}
+  .raw-json {{
+    display: none;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem;
+    margin-top: 1rem;
+    max-height: 600px;
+    overflow: auto;
+  }}
+  .raw-json pre {{
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }}
+
+  .hidden {{ display: none !important; }}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🧬 <span>MacDNA</span> Profile</h1>
+  <div class="subtitle">{hostname} — captured {captured[:10] if captured else 'N/A'}</div>
+  <div class="meta-row">
+    <div class="meta-item">macOS <strong>{macos_ver}</strong></div>
+    <div class="meta-item">Chip <strong>{chip}</strong></div>
+    <div class="meta-item">Dark Mode <strong>{'Yes' if dark else 'No'}</strong></div>
+    <div class="meta-item">Serial <strong>{meta.get('serial', 'N/A')}</strong></div>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="num">{n_apps}</div><div class="label">Apps</div></div>
+  <div class="stat"><div class="num">{n_brew}</div><div class="label">Formulae</div></div>
+  <div class="stat"><div class="num">{n_casks}</div><div class="label">Casks</div></div>
+  <div class="stat"><div class="num">{n_dock}</div><div class="label">Dock</div></div>
+  <div class="stat"><div class="num">{n_dots}</div><div class="label">Dotfiles</div></div>
+  <div class="stat"><div class="num">{n_fonts}</div><div class="label">Fonts</div></div>
+</div>
+
+<div class="search-bar">
+  <input type="text" id="search" placeholder="Search settings, apps, values..." autocomplete="off">
+</div>
+
+<div class="container">
+{section_cards}
+
+  <div class="raw-toggle">
+    <button onclick="toggleRaw()">Show Raw JSON</button>
+  </div>
+  <div class="raw-json" id="rawJson">
+    <pre>{json.dumps(profile, indent=2, default=str).replace('<', '&lt;').replace('>', '&gt;')}</pre>
+  </div>
+</div>
+
+<div class="footer">
+  🧬 MacDNA v3.0 — Author: cyberspartan77 — Generated {captured[:10] if captured else 'N/A'}
+</div>
+
+<script>
+// Toggle sections
+document.querySelectorAll('.section-header').forEach(h => {{
+  h.addEventListener('click', () => {{
+    h.parentElement.classList.toggle('open');
+  }});
+}});
+
+// Search
+document.getElementById('search').addEventListener('input', function() {{
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('.section').forEach(s => {{
+    if (!q) {{
+      s.classList.remove('hidden');
+      return;
+    }}
+    const text = s.textContent.toLowerCase();
+    if (text.includes(q)) {{
+      s.classList.remove('hidden');
+      s.classList.add('open');
+    }} else {{
+      s.classList.add('hidden');
+    }}
+  }});
+}});
+
+// Raw JSON toggle
+function toggleRaw() {{
+  const el = document.getElementById('rawJson');
+  el.style.display = el.style.display === 'block' ? 'none' : 'block';
+}}
+
+// Expand all on load for quick view
+document.querySelectorAll('.section').forEach(s => s.classList.add('open'));
+</script>
+</body>
+</html>"""
+
+    with open(filepath, "w") as f:
+        f.write(html)
+
+
+def _format_value(val):
+    """Format a value for HTML display."""
+    if val is True:
+        return '<span class="val-true">true ✓</span>'
+    elif val is False:
+        return '<span class="val-false">false ✗</span>'
+    elif val is None or val == "":
+        return '<span class="val-empty">(default)</span>'
+    elif isinstance(val, (int, float)):
+        return f'<span class="val-number">{val}</span>'
+    else:
+        s = str(val).replace('<', '&lt;').replace('>', '&gt;')
+        return f'<span class="val-string">{s}</span>'
+
+
+def _build_section_card(key, icon, title, data):
+    """Build an HTML card for a profile section."""
+    # Count items for badge
+    badge = ""
+    if isinstance(data, dict):
+        badge = f'{len(data)} items'
+    elif isinstance(data, list):
+        badge = f'{len(data)} items'
+
+    body_html = _render_data(key, data)
+
+    return f"""
+  <div class="section" data-key="{key}">
+    <div class="section-header">
+      <div class="section-icon">{icon}</div>
+      <div class="section-title">{title}</div>
+      <div class="section-badge">{badge}</div>
+      <div class="section-arrow">▶</div>
+    </div>
+    <div class="section-body">{body_html}</div>
+  </div>
+"""
+
+
+def _render_data(key, data, depth=0):
+    """Recursively render data into HTML tables, lists, and code blocks."""
+    if isinstance(data, dict):
+        rows = ""
+        for k, v in data.items():
+            # Special handling for known list fields
+            if key == "apps" and k == "all_installed" and isinstance(v, list):
+                tags = "".join(f'<span class="item-tag app">{item}</span>' for item in v)
+                rows += f'<div class="subsection"><div class="subsection-title">All Installed Apps ({len(v)})</div><div class="item-list">{tags}</div></div>'
+            elif key == "apps" and k == "homebrew" and isinstance(v, dict):
+                formulae = v.get("formulae", [])
+                casks = v.get("casks", [])
+                f_tags = "".join(f'<span class="item-tag">{item}</span>' for item in formulae)
+                c_tags = "".join(f'<span class="item-tag cask">{item}</span>' for item in casks)
+                rows += f'<div class="subsection"><div class="subsection-title">Homebrew Formulae ({len(formulae)})</div><div class="item-list">{f_tags}</div></div>'
+                rows += f'<div class="subsection"><div class="subsection-title">Homebrew Casks ({len(casks)})</div><div class="item-list">{c_tags}</div></div>'
+            elif key == "apps" and k == "mas" and isinstance(v, list):
+                if v:
+                    tags = "".join(f'<span class="item-tag app">{item.get("name", "")} (#{item.get("id", "")})</span>' for item in v)
+                    rows += f'<div class="subsection"><div class="subsection-title">Mac App Store ({len(v)})</div><div class="item-list">{tags}</div></div>'
+                else:
+                    rows += f'<div class="subsection"><div class="subsection-title">Mac App Store</div><span class="val-empty">None captured (install mas CLI)</span></div>'
+            elif key == "dock" and k == "apps" and isinstance(v, list):
+                tags = "".join(f'<span class="item-tag dock">{item.get("label", "")}</span>' for item in v)
+                rows += f'<div class="subsection"><div class="subsection-title">Dock Apps ({len(v)})</div><div class="item-list">{tags}</div></div>'
+            elif key == "shell" and k == "dotfiles" and isinstance(v, dict):
+                for fname, content in v.items():
+                    safe = str(content).replace('<', '&lt;').replace('>', '&gt;')
+                    rows += f'<div class="subsection"><div class="subsection-title">{fname}</div><div class="code-block">{safe}</div></div>'
+            elif key == "login_items" and k == "login_items" and isinstance(v, list):
+                tags = "".join(f'<span class="item-tag">{item}</span>' for item in v)
+                rows += f'<div class="subsection"><div class="subsection-title">Login Items ({len(v)})</div><div class="item-list">{tags}</div></div>'
+            elif key == "login_items" and k == "launch_agents" and isinstance(v, list):
+                tags = "".join(f'<span class="item-tag">{item}</span>' for item in v)
+                rows += f'<div class="subsection"><div class="subsection-title">Launch Agents ({len(v)})</div><div class="item-list">{tags}</div></div>'
+            elif key == "fonts" and k == "user_fonts" and isinstance(v, list):
+                if v:
+                    tags = "".join(f'<span class="item-tag">{item}</span>' for item in v)
+                    rows += f'<div class="subsection"><div class="subsection-title">User Fonts ({len(v)})</div><div class="item-list">{tags}</div></div>'
+                else:
+                    rows += '<div class="subsection"><div class="subsection-title">User Fonts</div><span class="val-empty">None installed</span></div>'
+            elif key == "network" and k == "dns_servers" and isinstance(v, list):
+                tags = "".join(f'<span class="item-tag">{item}</span>' for item in v)
+                rows += f'<div class="subsection"><div class="subsection-title">DNS Servers</div><div class="item-list">{tags}</div></div>'
+            elif key == "network" and k == "custom_hosts" and isinstance(v, list):
+                if v:
+                    lines = "\\n".join(str(h) for h in v)
+                    safe = lines.replace('<', '&lt;').replace('>', '&gt;')
+                    rows += f'<div class="subsection"><div class="subsection-title">Custom Hosts</div><div class="code-block">{safe}</div></div>'
+            elif isinstance(v, dict):
+                # Nested dict -> sub-table
+                sub_rows = ""
+                for sk, sv in v.items():
+                    sub_rows += f'<tr><td>{sk}</td><td>{_format_value(sv)}</td></tr>'
+                friendly = k.replace("_", " ").title()
+                rows += f'<div class="subsection"><div class="subsection-title">{friendly}</div><table class="data-table">{sub_rows}</table></div>'
+            elif isinstance(v, list):
+                if v:
+                    tags = "".join(f'<span class="item-tag">{item}</span>' for item in v)
+                    friendly = k.replace("_", " ").title()
+                    rows += f'<div class="subsection"><div class="subsection-title">{friendly} ({len(v)})</div><div class="item-list">{tags}</div></div>'
+            else:
+                rows += f'<table class="data-table"><tr><td>{k}</td><td>{_format_value(v)}</td></tr></table>'
+        return rows
+
+    elif isinstance(data, list):
+        tags = "".join(f'<span class="item-tag">{item}</span>' for item in data)
+        return f'<div class="item-list">{tags}</div>'
+    else:
+        return f'<p>{_format_value(data)}</p>'
+
+
+# ═══════════════════════════════════════════════
 #  MENU FLOWS
 # ═══════════════════════════════════════════════
 
+def profile_display_name(filepath):
+    """Get a friendly display name from a profile path."""
+    parent = os.path.basename(os.path.dirname(filepath))
+    filename = os.path.basename(filepath)
+    if filename == "profile.json":
+        return parent  # folder name is the label
+    return filename  # legacy flat file
+
+
 def get_saved_profiles():
-    """Find all .json profiles in the profiles directory."""
+    """Find all profile.json files in profile subdirectories, plus legacy top-level .json files."""
     settings = load_settings()
     pdir = get_profiles_dir(settings)
     os.makedirs(pdir, exist_ok=True)
-    files = sorted(globmod.glob(os.path.join(pdir, "*.json")), key=os.path.getmtime, reverse=True)
-    return files
+    # New format: profiles/<folder>/profile.json
+    folder_profiles = sorted(globmod.glob(os.path.join(pdir, "*", "profile.json")), key=os.path.getmtime, reverse=True)
+    # Legacy format: profiles/*.json (flat files)
+    flat_profiles = sorted(globmod.glob(os.path.join(pdir, "*.json")), key=os.path.getmtime, reverse=True)
+    return folder_profiles + flat_profiles
 
 
 def flow_capture():
@@ -800,31 +1373,36 @@ def flow_capture():
         if removed:
             warn(f"Excluded sensitive dotfiles: {', '.join(removed)}")
 
-    # Save
+    # Save — create a folder per capture with JSON + HTML
     pdir = get_profiles_dir(settings)
-    os.makedirs(pdir, exist_ok=True)
-    hostname = profile.get("meta", {}).get("hostname", "Mac").replace(" ", "_")
-    default_name = f"macdna_{hostname}_{datetime.date.today()}.json"
+    hostname_clean = profile.get("meta", {}).get("hostname", "Mac").replace(" ", "_").replace("'", "")
+    date_str = datetime.date.today().isoformat()
+    folder_name = f"{hostname_clean}_{date_str}"
 
-    if settings.get("auto_name_profiles", False):
-        filename = default_name
-        info(f"Auto-named: {filename}")
-    else:
+    if not settings.get("auto_name_profiles", False):
         print()
-        filename = prompt("Save as", default_name)
+        folder_name = prompt("Profile folder name", folder_name)
 
-    if not filename.endswith(".json"):
-        filename += ".json"
+    folder_path = os.path.join(pdir, folder_name)
+    os.makedirs(folder_path, exist_ok=True)
 
-    filepath = os.path.join(pdir, filename)
+    # Write JSON
+    json_path = os.path.join(folder_path, "profile.json")
     indent = None if settings.get("compact_json", False) else 2
-    with open(filepath, "w") as f:
+    with open(json_path, "w") as f:
         json.dump(profile, f, indent=indent, default=str)
+
+    # Write HTML viewer
+    spinner_line("Generating HTML report")
+    html_path = os.path.join(folder_path, "profile.html")
+    generate_html_report(profile, html_path)
+    spinner_done("HTML report generated")
 
     print()
     divider("CAPTURE COMPLETE")
-    success(f"Saved to: {filepath}")
-    info(f"Size: {os.path.getsize(filepath) / 1024:.1f} KB")
+    success(f"Folder: {folder_path}")
+    info(f"JSON:   {os.path.getsize(json_path) / 1024:.1f} KB")
+    info(f"HTML:   {os.path.getsize(html_path) / 1024:.1f} KB")
 
     # Quick stats
     apps = profile.get("apps", {}).get("all_installed", [])
@@ -839,6 +1417,11 @@ def flow_capture():
         info(f"Dock apps: {len(dock)}")
     if fonts:
         info(f"User fonts: {len(fonts)}")
+
+    # Offer to open HTML
+    open_it = prompt("Open HTML report in browser? (y/N)")
+    if open_it.lower() == "y":
+        run(f'open "{html_path}"')
 
     pause()
 
@@ -860,7 +1443,7 @@ def flow_deploy():
     # Pick a profile
     options = []
     for p in profiles:
-        name = os.path.basename(p)
+        name = profile_display_name(p)
         size = os.path.getsize(p) / 1024
         mtime = datetime.datetime.fromtimestamp(os.path.getmtime(p)).strftime("%Y-%m-%d %H:%M")
         options.append((name, f"{size:.1f} KB — {mtime}"))
@@ -1040,7 +1623,7 @@ def flow_view_profile():
 
     options = []
     for p in profiles:
-        name = os.path.basename(p)
+        name = profile_display_name(p)
         size = os.path.getsize(p) / 1024
         options.append((name, f"{size:.1f} KB"))
 
@@ -1054,7 +1637,7 @@ def flow_view_profile():
     # Show sections menu
     while True:
         sections = [(k, f"{len(str(v))} chars") for k, v in profile.items()]
-        sec_choice = show_menu(f"Profile Sections — {os.path.basename(profiles[choice-1])}", sections)
+        sec_choice = show_menu(f"Profile Sections — {profile_display_name(profiles[choice-1])}", sections)
         if sec_choice <= 0 or sec_choice > len(sections):
             break
 
@@ -1079,7 +1662,7 @@ def flow_diff():
         pause()
         return
 
-    options = [(os.path.basename(p), "") for p in profiles]
+    options = [(profile_display_name(p), "") for p in profiles]
 
     clear()
     banner()
@@ -1116,8 +1699,8 @@ def flow_diff():
 
     clear()
     banner()
-    name1 = os.path.basename(profiles[idx1])
-    name2 = os.path.basename(profiles[idx2])
+    name1 = profile_display_name(profiles[idx1])
+    name2 = profile_display_name(profiles[idx2])
     divider(f"DIFF: {name1} vs {name2}")
     print()
 
@@ -1177,17 +1760,23 @@ def flow_delete_profile():
         pause()
         return
 
-    options = [(os.path.basename(p), f"{os.path.getsize(p)/1024:.1f} KB") for p in profiles]
+    options = [(profile_display_name(p), f"{os.path.getsize(p)/1024:.1f} KB") for p in profiles]
     choice = show_menu("DELETE — Select a Profile", options)
     if choice <= 0 or choice > len(profiles):
         return
 
     target = profiles[choice - 1]
-    name = os.path.basename(target)
+    name = profile_display_name(target)
     confirm = prompt(f"Delete {name}? Type DELETE to confirm")
     if confirm == "DELETE":
-        os.remove(target)
-        success(f"Deleted {name}")
+        # If it's a folder-based profile, delete the whole folder
+        parent_dir = os.path.dirname(target)
+        if os.path.basename(target) == "profile.json" and parent_dir != get_profiles_dir(load_settings()):
+            shutil.rmtree(parent_dir)
+            success(f"Deleted folder: {name}")
+        else:
+            os.remove(target)
+            success(f"Deleted {name}")
     else:
         info("Cancelled")
     pause()
