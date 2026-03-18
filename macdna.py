@@ -24,7 +24,12 @@ import platform
 import datetime
 import plistlib
 import glob as globmod
+import re
+import getpass
+import hashlib
 from pathlib import Path
+
+import securityaudit
 
 # ═══════════════════════════════════════════════
 #  TERMINAL UI
@@ -61,6 +66,8 @@ DEFAULT_SETTINGS = {
     "auto_name_profiles": False,
     "backup_directory": "",  # blank = ~/.macdna_backup/
     "default_capture_categories": "all",  # "all" or comma-separated keys
+    "security_audit_with_capture": False,
+    "threat_alert_level": "medium",  # low, medium, high
 }
 
 SENSITIVE_DOTFILES = {".netrc", ".npmrc", ".pypirc", ".docker/config.json"}
@@ -1418,6 +1425,21 @@ def flow_capture():
     if fonts:
         info(f"User fonts: {len(fonts)}")
 
+    # Auto security audit if enabled
+    if settings.get("security_audit_with_capture", False):
+        print()
+        divider("AUTO SECURITY AUDIT")
+        alert_level = settings.get("threat_alert_level", "medium")
+        audit_data = securityaudit.run_full_audit(alert_level=alert_level)
+        audit_json = os.path.join(folder_path, "audit.json")
+        audit_html = os.path.join(folder_path, "audit.html")
+        with open(audit_json, "w") as f:
+            json.dump(audit_data, f, indent=indent, default=str)
+        securityaudit.generate_audit_html(audit_data, audit_html)
+        success("Security audit saved alongside profile")
+        info(f"Audit JSON: {os.path.getsize(audit_json) / 1024:.1f} KB")
+        info(f"Audit HTML: {os.path.getsize(audit_html) / 1024:.1f} KB")
+
     # Offer to open HTML
     open_it = prompt("Open HTML report in browser? (y/N)")
     if open_it.lower() == "y":
@@ -1798,6 +1820,8 @@ SETTINGS_DEFS = [
     ("compact_json",                "Compact JSON",                 "Save profiles as compact (smaller) vs pretty-printed",    "bool"),
     ("color_output",                "Color Output",                 "Enable/disable terminal colors",                          "bool"),
     ("default_capture_categories",  "Default Capture Categories",   "Pre-selected categories (all or comma-separated keys)",   "text"),
+    ("security_audit_with_capture", "Security Audit with Capture",  "Auto-run security audit when capturing a profile",        "bool"),
+    ("threat_alert_level",          "Threat Alert Level",           "Sensitivity for threat detection (low/medium/high)",       "choice"),
 ]
 
 
@@ -1826,6 +1850,11 @@ def flow_settings():
                 else:
                     default_hint = "./profiles/" if "profile" in key else "~/.macdna_backup/"
                     display = f"{DIM}{default_hint} (default){RESET}"
+            elif stype == "choice":
+                color = {
+                    "low": GREEN, "medium": YELLOW, "high": RED
+                }.get(val, CYAN)
+                display = f"{color}{val}{RESET}"
             else:
                 display = f"{CYAN}{val}{RESET}"
 
@@ -1897,6 +1926,18 @@ def flow_settings():
                 settings[key] = ""
                 save_settings(settings)
 
+        elif stype == "choice":
+            current = settings.get(key, "")
+            print()
+            info(f"Current: {current}")
+            print(f"    {BOLD}{CYAN}1{RESET}  low    {DIM}(fewer alerts, only critical){RESET}")
+            print(f"    {BOLD}{CYAN}2{RESET}  medium {DIM}(balanced — recommended){RESET}")
+            print(f"    {BOLD}{CYAN}3{RESET}  high   {DIM}(verbose, flags everything){RESET}")
+            pick = prompt("Choose 1/2/3", "2")
+            choice_map = {"1": "low", "2": "medium", "3": "high"}
+            settings[key] = choice_map.get(pick, "medium")
+            save_settings(settings)
+
         elif stype == "text":
             current = settings.get(key, "")
             print()
@@ -1909,6 +1950,108 @@ def flow_settings():
 
 
 # ═══════════════════════════════════════════════
+#  SECURITY AUDIT FLOW
+# ═══════════════════════════════════════════════
+
+def flow_security_audit():
+    """Run the Security & Asset Audit engine."""
+    import securityaudit
+    settings = load_settings()
+    alert_level = settings.get("threat_alert_level", "medium")
+
+    if not securityaudit.is_root():
+        print(f"\n  {YELLOW}!{RESET} For full results, run:  {BOLD}sudo python3 macdna.py{RESET}")
+        print(f"  {DIM}Some checks (firewall details, remote login, sudoers) need elevated access.{RESET}\n")
+
+    # Section selection
+    audit_items = [
+        ("asset_intelligence",  "Asset Intelligence (hardware, storage, battery, peripherals)"),
+        ("user_accounts",       "User Accounts & Access (users, sudoers, SSH)"),
+        ("certificates",        "Certificates (keychain, expiry, self-signed)"),
+        ("network",             "Network & Connections (ports, interfaces, sharing)"),
+        ("domain_management",   "Domain & Management (AD, LDAP, MDM, profiles)"),
+        ("threat_detection",    "Threat Detection & IOCs (malware, shells, cron, extensions)"),
+        ("compliance",          "EDR / Compliance Posture (FileVault, SIP, Gatekeeper, etc.)"),
+        ("logs_forensics",      "Logs & Forensic Snapshot (logins, crashes, downloads)"),
+    ]
+
+    selected = show_checklist("Security Audit — Select Sections", audit_items, preselect_all=True)
+    if not selected:
+        warn("Nothing selected")
+        pause()
+        return
+
+    # Run audit
+    clear()
+    banner()
+    divider(f"SECURITY AUDIT — Alert Level: {alert_level.upper()}")
+    print()
+
+    audit_data = securityaudit.run_full_audit(selected_sections=selected, alert_level=alert_level)
+
+    # Save output
+    pdir = get_profiles_dir(settings)
+    hostname_clean = audit_data.get("audit_meta", {}).get("hostname", "Mac").replace(" ", "_").replace("'", "")
+    date_str = datetime.date.today().isoformat()
+    folder_name = f"{hostname_clean}_{date_str}"
+
+    if not settings.get("auto_name_profiles", False):
+        print()
+        folder_name = prompt("Audit folder name", folder_name)
+
+    folder_path = os.path.join(pdir, folder_name)
+    os.makedirs(folder_path, exist_ok=True)
+
+    # Write JSON
+    json_path = os.path.join(folder_path, "audit.json")
+    indent = None if settings.get("compact_json", False) else 2
+    with open(json_path, "w") as f:
+        json.dump(audit_data, f, indent=indent, default=str)
+
+    # Write HTML
+    spinner_line("Generating Audit HTML report")
+    html_path = os.path.join(folder_path, "audit.html")
+    securityaudit.generate_audit_html(audit_data, html_path)
+    spinner_done("Audit HTML report generated")
+
+    # Summary
+    print()
+    divider("AUDIT COMPLETE")
+    success(f"Folder: {folder_path}")
+    info(f"JSON:   {os.path.getsize(json_path) / 1024:.1f} KB")
+    info(f"HTML:   {os.path.getsize(html_path) / 1024:.1f} KB")
+
+    # Threat summary
+    threats = audit_data.get("threat_detection", {})
+    sev = threats.get("severity_counts", {})
+    n_crit = sev.get("critical", 0)
+    n_warn = sev.get("warning", 0)
+    n_info = sev.get("info", 0)
+    if n_crit:
+        print(f"\n  {RED}{BOLD}  !!! {n_crit} CRITICAL FINDINGS !!!{RESET}")
+    if n_warn:
+        print(f"  {YELLOW}  {n_warn} warnings{RESET}")
+    if n_info:
+        print(f"  {CYAN}  {n_info} informational items{RESET}")
+
+    compliance = audit_data.get("compliance", {})
+    passed = compliance.get("passed", 0)
+    failed = compliance.get("failed", 0)
+    total = compliance.get("total", 0)
+    if total:
+        pct = int((passed / total) * 100) if total else 0
+        color = GREEN if pct >= 80 else YELLOW if pct >= 60 else RED
+        print(f"\n  {color}  Compliance: {passed}/{total} checks passed ({pct}%){RESET}")
+
+    # Open HTML
+    open_it = prompt("Open HTML audit report in browser? (y/N)")
+    if open_it.lower() == "y":
+        run(f'open "{html_path}"')
+
+    pause()
+
+
+# ═══════════════════════════════════════════════
 #  MAIN MENU LOOP
 # ═══════════════════════════════════════════════
 
@@ -1918,11 +2061,12 @@ def main():
         profile_info = f"{n_profiles} saved" if n_profiles else "none yet"
 
         choice = show_menu("MAIN MENU", [
-            ("Capture This Mac",   "Scan and save all settings to a profile"),
-            ("Deploy to This Mac", "Apply a saved profile to this machine"),
-            ("View Profile",       "Browse the contents of a saved profile"),
-            ("Compare Profiles",   "Diff two profiles side by side"),
-            ("Delete Profile",     f"Remove a saved profile ({profile_info})"),
+            ("Capture This Mac",      "Scan and save all settings to a profile"),
+            ("Deploy to This Mac",    "Apply a saved profile to this machine"),
+            ("View Profile",          "Browse the contents of a saved profile"),
+            ("Compare Profiles",      "Diff two profiles side by side"),
+            ("Delete Profile",        f"Remove a saved profile ({profile_info})"),
+            (f"{MAGENTA}Security Audit{RESET}", "Full security & asset audit with threat detection"),
             (f"{YELLOW}Settings{RESET}",  "Configure MacDNA preferences"),
             (f"{RED}Exit MacDNA{RESET}",  "Quit the application"),
         ], show_back=False)
@@ -1938,8 +2082,10 @@ def main():
         elif choice == 5:
             flow_delete_profile()
         elif choice == 6:
+            flow_security_audit()
+        elif choice == 7:
             flow_settings()
-        elif choice == 7 or choice == 0:
+        elif choice == 8 or choice == 0:
             clear()
             print(f"\n  {CYAN}🧬 Thanks for using MacDNA. Your Mac's DNA is safe.{RESET}\n")
             sys.exit(0)

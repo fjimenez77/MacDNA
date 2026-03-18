@@ -36,8 +36,9 @@ That's it. You get an interactive menu:
   3  View Profile
   4  Compare Profiles
   5  Delete Profile
-  6  Settings
-  7  Exit MacDNA
+  6  Security & Asset Audit
+  7  Settings
+  8  Exit MacDNA
 ```
 
 ## What It Captures
@@ -75,6 +76,46 @@ The HTML report is a dark-themed, searchable, expandable viewer you can open in 
 - Full raw JSON toggle
 - Search bar to find any setting
 
+## Security & Asset Audit
+
+Run with `sudo` for full results: `sudo python3 macdna.py` → option 6.
+
+A comprehensive security assessment covering 8 audit domains with 60+ checks:
+
+| Section | What's Scanned |
+|---------|---------------|
+| **Asset Intelligence** | CPU, RAM, GPU, storage volumes, battery health, USB/Thunderbolt/Bluetooth devices, serial, board ID |
+| **User Accounts & Access** | Local users, admin status, hidden accounts, sudoers, SSH config, authorized_keys |
+| **Certificates** | System keychain certs, expiry dates, self-signed detection, 30/60/90-day expiry warnings |
+| **Network & Connections** | Listening ports, established connections, UDP, interfaces, VPN tunnels, routing table, sharing services |
+| **Domain & Management** | Active Directory, LDAP, MDM enrollment, configuration profiles, managed preferences |
+| **Threat Detection & IOCs** | Reverse shells, suspicious processes, unsigned binaries, crypto miners, malware names, cron jobs, browser extensions, env variable anomalies, recently modified system files |
+| **Compliance Posture** | FileVault, SIP, Gatekeeper, firewall, stealth mode, auto-updates, screen lock, remote login, guest account, AirDrop, Time Machine, secure boot |
+| **Logs & Forensics** | Failed logins, sudo history, SSH history, kernel panics, app crashes, quarantine events, mounted volumes |
+
+### Guidance & Remediation Engine
+
+Every failed check or threat finding includes actionable remediation:
+
+- **What** — plain English description of the issue
+- **Risk** — why it matters to your security posture
+- **Fix** — the exact terminal command to remediate
+- **Settings Path** — where to fix it in System Settings UI
+- **CIS Reference** — CIS Benchmark ID where applicable
+
+Findings are color-coded: :red_circle: Critical | :yellow_circle: Warning | :green_circle: Pass
+
+### Audit Output
+
+```
+profiles/
+  CyberSpartan77s_MacBook_Pro_2026-03-17/
+    profile.json    ← system capture
+    profile.html    ← system capture viewer
+    audit.json      ← security audit data
+    audit.html      ← security audit viewer with guidance
+```
+
 ## Deploy
 
 Pick a saved profile → select which categories to apply → dry-run or live.
@@ -101,6 +142,8 @@ Configurable via the in-app Settings menu (option 6):
 | Compact JSON | OFF |
 | Color output | ON |
 | Default capture categories | All |
+| Security audit with capture | OFF |
+| Threat alert level | medium |
 
 Settings persist in `settings.json`.
 
@@ -119,6 +162,23 @@ Settings persist in `settings.json`.
 - Apple Silicon or Intel
 - Optional: [Homebrew](https://brew.sh) (for app install/restore)
 - Optional: [mas](https://github.com/mas-cli/mas) (for App Store app capture)
+
+## Project Structure
+
+```
+MacDNA/
+├── macdna.py           # Main app — capture, deploy, menus, HTML reports
+├── securityaudit.py    # Security & Asset Audit engine + guidance
+├── settings.json       # Persistent user settings
+├── profiles/           # Saved captures and audits
+├── macdna-handoff.md   # Original project briefing
+├── LICENSE
+└── README.md
+```
+
+## Related Projects
+
+- **[WinDNA](https://github.com/fjimenez77/WinDNA)** — Windows counterpart (Python + PowerShell, x64/x86/ARM)
 
 ## Author
 
