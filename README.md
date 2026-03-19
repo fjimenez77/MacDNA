@@ -80,6 +80,18 @@ The HTML report is a dark-themed, searchable, expandable viewer you can open in 
 
 Run with `sudo` for full results: `sudo python3 macdna.py` → option 6.
 
+### sudo vs Non-sudo
+
+| Feature | Without sudo | With sudo |
+|---------|-------------|-----------|
+| Capture settings | ✅ Full | ✅ Full |
+| Deploy settings | ✅ Full | ✅ Full |
+| Security audit — asset intel | ✅ Full | ✅ Full |
+| Security audit — compliance | ⚠️ Partial (firewall, remote login limited) | ✅ Full |
+| Security audit — event logs | ⚠️ Limited (sudo history, failed logins) | ✅ Full |
+| Security audit — threats | ✅ Full | ✅ Full |
+| Security audit — certificates | ✅ Full | ✅ Full |
+
 A comprehensive security assessment covering 8 audit domains with 60+ checks:
 
 | Section | What's Scanned |
