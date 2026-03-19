@@ -180,9 +180,11 @@ MacDNA/
 
 - **[WinDNA](https://github.com/fjimenez77/WinDNA)** — Windows counterpart (Python + PowerShell, x64/x86/ARM)
 
-## Author
+## Authors
 
 **cyberspartan77** — [github.com/fjimenez77](https://github.com/fjimenez77)
+
+**canadayb** — [github.com/canadayb](https://github.com/canadayb)
 
 ## License
 
