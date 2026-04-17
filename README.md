@@ -1,6 +1,9 @@
-<h1 align="center">🧬 MacDNA v3</h1>
-<p align="center"><strong>Capture · Deploy · Clone Your Mac</strong></p>
-<p align="center">v3.0 &nbsp;━━&nbsp; cyberspartan77 &nbsp;━━&nbsp; 2026</p>
+<div align="center">
+<h1>🧬</h1>
+<h1>MacDNA v3</h1>
+<p><strong>Capture · Deploy · Clone Your Mac</strong></p>
+<p>v3.0 ━━ cyberspartan77 ━━ 2026</p>
+</div>
 
 **Capture your Mac's complete configuration DNA and deploy it to any new machine.**
 
