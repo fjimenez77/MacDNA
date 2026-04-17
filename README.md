@@ -181,9 +181,7 @@ Settings persist in `settings.json`.
 MacDNA/
 ├── macdna.py           # Main app — capture, deploy, menus, HTML reports
 ├── securityaudit.py    # Security & Asset Audit engine + guidance
-├── settings.json       # Persistent user settings
 ├── profiles/           # Saved captures and audits
-├── macdna-handoff.md   # Original project briefing
 ├── LICENSE
 └── README.md
 ```
@@ -192,12 +190,65 @@ MacDNA/
 
 - **[WinDNA](https://github.com/fjimenez77/WinDNA)** — Windows counterpart (Python + PowerShell, x64/x86/ARM)
 
-## Authors
+---
 
-**cyberspartan77** — [github.com/fjimenez77](https://github.com/fjimenez77)
+## Keywords
 
-**canadayb** — [github.com/canadayb](https://github.com/canadayb)
+macOS system backup, Mac settings capture, Mac migration tool, deploy Mac preferences, clone Mac setup, macOS configuration DNA, system preferences backup, Mac dotfile backup, FileVault audit, SIP compliance check, macOS security audit, CIS benchmark Mac, Mac forensic snapshot, Homebrew backup restore, Mac App Store backup, dark mode capture, dock layout backup, Python macOS tool, Mac IT admin tool, macOS compliance checker
+
+## Contributing
+
+Pull requests, bug reports, and feature suggestions are welcome.
+
+Quick version:
+
+```bash
+# 1. Fork the repo on GitHub
+# 2. Clone your fork
+git clone https://github.com/YOUR_USERNAME/MacDNA.git
+cd MacDNA
+
+# 3. Create a feature branch
+git checkout -b feature/your-idea
+
+# 4. Make changes, test locally
+python3 macdna.py
+python3 -m py_compile macdna.py
+
+# 5. Commit + push + open a PR
+git commit -m "Add: your change"
+git push origin feature/your-idea
+```
+
+Before opening a PR:
+
+- Open an issue first for non-trivial changes
+- Keep PRs focused (one logical change per PR)
+- Test the affected functionality manually
+- No new external dependencies without discussion
+- No real credentials, SSH keys, or PII in commits
+
+Reporting bugs? Include macOS version, Python version, and reproduction steps.
+
+Found a security issue? Don't open a public issue — use [GitHub Security Advisories](https://github.com/fjimenez77/MacDNA/security/advisories) instead.
+
+## Contributors
+
+- [@fjimenez77](https://github.com/fjimenez77) (Felix J.)
+- [@canadayb](https://github.com/canadayb) (Brian Canaday)
 
 ## License
 
-MIT
+MIT License — see [LICENSE](LICENSE) for full text.
+
+Copyright 2026 Felix J. ([@fjimenez77](https://github.com/fjimenez77)) and contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
