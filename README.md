@@ -236,6 +236,7 @@ Found a security issue? Don't open a public issue — use [GitHub Security Advis
 
 - [@fjimenez77](https://github.com/fjimenez77) (Felix J.)
 - [@canadayb](https://github.com/canadayb) (Brian Canaday)
+- [@DevForgeAtlas](https://github.com/DevForgeAtlas)
 
 ## License
 
